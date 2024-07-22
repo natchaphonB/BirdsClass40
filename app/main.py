@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request
 import base64
 import cv2
 import numpy as np
-from tensorflow.keras.models import load_model
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import gc
+import tensorflow as tf
 
 app = FastAPI()
 
@@ -16,14 +16,21 @@ app.add_middleware(
     allow_headers=['*']   
 )
 
-# Load model once when starting the API
-file_path = '../models/best_model1(10epochs).h5'
-model = load_model(file_path)
 with open('bird_list_classes.json', 'r') as file:
     classes = json.load(file)
+
 size = 299
 img_size = (size, size)
 
+# โหลด TFLite model
+with open('model_quantized.tflite', 'rb') as f:
+    tflite_model = f.read()
+
+# แปลง TFLite model เป็น interpreter
+interpreter = tf.lite.Interpreter(model_content=tflite_model)
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 # Function to decode base64 string to image array
 def base64_to_image(base64_string):
@@ -39,8 +46,12 @@ def base64_to_image(base64_string):
 # Function to process image and make predictions
 def process_image(base64_input):
     img_array = base64_to_image(base64_input)
-    predictions = model.predict(img_array)
-    
+
+    # ทำการคาดคะเนด้วย TFLite model
+    interpreter.set_tensor(input_details[0]['index'], img_array)
+    interpreter.invoke()
+    predictions = interpreter.get_tensor(output_details[0]['index'])
+
     # Convert prediction to list of probabilities
     probabilities = list(predictions[0])
 
@@ -66,9 +77,9 @@ def process_image(base64_input):
         probability_rank.append(probability.item())
         predict_rank.append(class_name)
         print(f"class {id}: {class_name} {probability:.4f}")
-    
+
     # Explicitly call garbage collection
-    del img_array
+    del img_array, predictions
     gc.collect()
 
     return {
