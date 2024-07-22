@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request
 import base64
 import cv2
 import numpy as np
@@ -16,7 +16,7 @@ app.add_middleware(
     allow_headers=['*']   
 )
 
-# Load model from file
+# Load model once when starting the API
 file_path = '../models/best_model1(10epochs).h5'
 model = load_model(file_path)
 with open('bird_list_classes.json', 'r') as file:
@@ -67,7 +67,10 @@ def process_image(base64_input):
         predict_rank.append(class_name)
         print(f"class {id}: {class_name} {probability:.4f}")
     
+    # Explicitly call garbage collection
+    del img_array
     gc.collect()
+
     return {
         "predictions": [
             {"rank": 1, "class_id": classes_id[0], "class_name": predict_rank[0], "probabilities": probability_rank[0]},
@@ -84,7 +87,7 @@ def read_root():
     return {"Hello": classes}
 
 @app.post("/api/birdClassify")
-async def read_image(image_data: Request, background_tasks: BackgroundTasks):
+async def read_image(image_data: Request):
     image_dataJson = await image_data.json()
     base64_input = image_dataJson["image"]
 
